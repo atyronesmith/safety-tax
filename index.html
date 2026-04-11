@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Safety Tax — LLM Security Overhead Visualized</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #f8fafc;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+    }
+
+    /* Controls bar */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    #model-btns {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    #model-btns button {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    #model-btns button:hover {
+      border-color: #38bdf8;
+      color: #e2e8f0;
+    }
+    #model-btns button.active {
+      background: #38bdf8;
+      border-color: #38bdf8;
+      color: #0f172a;
+      font-weight: 700;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .control-group select, .control-group button {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .control-group select:hover, .control-group button:hover {
+      border-color: #38bdf8;
+    }
+    .control-group label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .control-group input[type="checkbox"] {
+      accent-color: #38bdf8;
+    }
+
+    /* Main viz area */
+    .viz-row {
+      display: flex;
+      gap: 16px;
+    }
+    .viz-canvas-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+    #viz {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid #1e293b;
+    }
+
+    /* Stats panel */
+    #stats {
+      width: 220px;
+      flex-shrink: 0;
+      background: #1e293b;
+      border-radius: 10px;
+      border: 1px solid #334155;
+      padding: 14px;
+      font-size: 12px;
+      align-self: flex-start;
+    }
+    .stat-header {
+      font-weight: 700;
+      font-size: 14px;
+      color: #f8fafc;
+      margin-bottom: 10px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 0;
+    }
+    .stat-val {
+      font-family: 'JetBrains Mono', monospace;
+      color: #38bdf8;
+      font-weight: 700;
+    }
+    .stat-divider {
+      border-top: 1px solid #334155;
+      margin: 8px 0;
+    }
+    .stat-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    /* Info section */
+    .info {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .info-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .info-card h3 {
+      font-size: 13px;
+      color: #38bdf8;
+      margin-bottom: 6px;
+    }
+    .info-card p {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .info-card .big-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      color: #ef4444;
+    }
+    .info-card .big-num.green { color: #22c55e; }
+    .info-card .big-num.amber { color: #f59e0b; }
+
+    footer {
+      margin-top: 30px;
+      font-size: 11px;
+      color: #475569;
+    }
+    footer a { color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>The Safety Tax</h1>
+    <p class="subtitle">How many hidden LLM calls sit between your prompt and your answer?</p>
+
+    <div class="controls">
+      <div id="model-btns"></div>
+      <div class="control-group">
+        <span>Pipeline:</span>
+        <select id="steps-toggle">
+          <option value="1">1 step</option>
+          <option value="3">3 steps</option>
+          <option value="5">5 steps (iterative)</option>
+        </select>
+        <span id="steps-label"></span>
+      </div>
+      <div class="control-group">
+        <button id="replay-btn">Replay</button>
+      </div>
+      <div class="control-group">
+        <label>
+          <input type="checkbox" id="auto-toggle" checked>
+          Auto-cycle
+        </label>
+      </div>
+    </div>
+
+    <div class="viz-row">
+      <div class="viz-canvas-wrap">
+        <canvas id="viz"></canvas>
+      </div>
+      <div id="stats"></div>
+    </div>
+
+    <div class="info">
+      <div class="info-card">
+        <h3>False Positive Rate</h3>
+        <div class="big-num">47.8%</div>
+        <p>Llama Guard 3-1B flagged 107 of 224 legitimate software engineering outputs as unsafe. 95% of code generation steps rejected.</p>
+      </div>
+      <div class="info-card">
+        <h3>Pipeline Compound Rejection</h3>
+        <div class="big-num">96.4%</div>
+        <p>In a 3-step pipeline, the probability that at least one step is blocked. Expected 21.4 calls (614% overhead) with per-step retry.</p>
+      </div>
+      <div class="info-card">
+        <h3>After Category Override</h3>
+        <div class="big-num green">1.3%</div>
+        <p>Excluding S6 (Specialized Advice) and S8 (Intellectual Property) drops the false positive rate from 47.8% to 1.3%. A configuration fix, not a compute fix.</p>
+      </div>
+      <div class="info-card">
+        <h3>Production Multiplier</h3>
+        <div class="big-num amber">5-19x</div>
+        <p>Production security models require 15-290 guard checks vs. 3 measured empirically. Most overhead comes from LLM-based checks, not deterministic controls.</p>
+      </div>
+    </div>
+
+    <footer>
+      Data from <a href="https://github.com/atyronesmith/drift">drift</a> empirical safety audit &mdash;
+      224 unique LLM outputs, 30 experiments, 4 reference security architectures.
+    </footer>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
