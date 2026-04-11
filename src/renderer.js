@@ -188,17 +188,29 @@ export function drawPacket(packet) {
 export function drawLatencyCounter(packet) {
   if (packet.state === 'done') return
 
-  // Latency number
-  ctx.fillStyle = C.bright
+  const totalTokens = packet.accTokensIn + packet.accTokensOut
+
+  // Latency + tokens
   ctx.font = 'bold 13px "JetBrains Mono", monospace'
   ctx.textAlign = 'center'
-  ctx.fillText(`${packet.accLatency.toFixed(0)}ms`, packet.x, packet.y - 22)
+
+  if (totalTokens > 0) {
+    // Show both on two lines
+    ctx.fillStyle = C.bright
+    ctx.fillText(`${packet.accLatency.toFixed(0)}ms`, packet.x, packet.y - 30)
+    ctx.fillStyle = '#f59e0b'
+    ctx.font = 'bold 11px "JetBrains Mono", monospace'
+    ctx.fillText(`${fmtTokens(totalTokens)} tokens`, packet.x, packet.y - 16)
+  } else {
+    ctx.fillStyle = C.bright
+    ctx.fillText(`${packet.accLatency.toFixed(0)}ms`, packet.x, packet.y - 22)
+  }
 
   // Current check name
   if (packet.state === 'waiting' && packet.currentCheckName) {
     ctx.fillStyle = C.dim
     ctx.font = '10px "DM Sans", system-ui, sans-serif'
-    ctx.fillText(packet.currentCheckName, packet.x, packet.y - 36)
+    ctx.fillText(packet.currentCheckName, packet.x, packet.y - (totalTokens > 0 ? 44 : 36))
   }
 }
 
@@ -218,7 +230,7 @@ export function drawHeader(pipeline) {
   ctx.textAlign = 'right'
   ctx.font = '12px "JetBrains Mono", monospace'
   ctx.fillStyle = C.dim
-  ctx.fillText(`${pipeline.totalChecks} checks  |  ${pipeline.totalLatency.toFixed(0)}ms overhead`, w * 0.94, 30)
+  ctx.fillText(`${pipeline.totalChecks} checks  |  ${pipeline.totalLatency.toFixed(0)}ms  |  ${fmtTokens(pipeline.totalTokens)} tokens`, w * 0.94, 30)
 
   if (pipeline.steps > 1) {
     ctx.fillText(`${pipeline.steps}-step pipeline`, w * 0.94, 46)
@@ -254,18 +266,37 @@ export function drawDoneMessage(pipeline) {
   const p = pipeline.packets[0]
   if (!p) return
 
-  ctx.fillStyle = C.glow
+  const totalTokens = p.accTokensIn + p.accTokensOut
+  const y = h * 0.50 - 52
+
   ctx.font = 'bold 14px "JetBrains Mono", monospace'
   ctx.textAlign = 'center'
+
+  // Latency line
+  ctx.fillStyle = C.glow
   ctx.fillText(
-    `Total safety overhead: ${p.accLatency.toFixed(0)}ms  (${pipeline.totalChecks} checks)`,
-    w / 2, h * 0.50 - 46
+    `Safety overhead: ${p.accLatency.toFixed(0)}ms latency  \u00b7  ${pipeline.totalChecks} checks`,
+    w / 2, y
   )
+
+  // Token line
+  if (totalTokens > 0) {
+    ctx.fillStyle = '#f59e0b'
+    ctx.font = 'bold 13px "JetBrains Mono", monospace'
+    ctx.fillText(
+      `${fmtTokens(totalTokens)} hidden tokens  (${fmtTokens(p.accTokensIn)} in + ${fmtTokens(p.accTokensOut)} out)`,
+      w / 2, y + 20
+    )
+  }
 }
 
 function fmtMs(ms) {
-  if (ms >= 1) return `${ms}ms`
   return `${ms}ms`
+}
+
+function fmtTokens(n) {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return `${n}`
 }
 
 function roundRect(ctx, x, y, w, h, r) {

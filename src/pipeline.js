@@ -29,6 +29,7 @@ export function createPipeline(model, steps) {
     packets: [],
     totalChecks: checksPerStep.length * steps,
     totalLatency: checksPerStep.reduce((s, c) => s + c.latency_ms, 0) * steps,
+    totalTokens: checksPerStep.reduce((s, c) => s + (c.tokens_in || 0) + (c.tokens_out || 0), 0) * steps,
     completedPackets: 0,
   }
 }
@@ -95,6 +96,8 @@ export function spawnPacket(pipeline, w, h) {
     state: 'moving',    // moving, waiting, done
     trail: [],
     accLatency: 0,
+    accTokensIn: 0,
+    accTokensOut: 0,
     currentCheckName: '',
     speed: 3,
   })
@@ -143,6 +146,8 @@ export function tickPackets(pipeline, dt) {
         p.state = 'waiting'
         p.waitFrames = gate.check.latency_ms * SPEED_SCALE
         p.accLatency += gate.check.latency_ms
+        p.accTokensIn += gate.check.tokens_in || 0
+        p.accTokensOut += gate.check.tokens_out || 0
         p.currentCheckName = gate.check.name
       }
     } else {

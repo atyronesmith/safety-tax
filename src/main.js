@@ -6,7 +6,7 @@
  * be selected manually.
  */
 
-import { MODELS, flattenChecks, CHECKPOINT_TYPES } from './models.js'
+import { MODELS, flattenChecks, CHECKPOINT_TYPES, PRODUCTIVE_TOKENS } from './models.js'
 import { createPipeline, layoutGates, spawnPacket, tickPackets } from './pipeline.js'
 import {
   initRenderer, resize, getSize, clear,
@@ -82,41 +82,67 @@ function highlightButton(idx) {
 
 // --- Stats panel ---
 
+function fmtTokens(n) {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return `${n}`
+}
+
 function updateStats() {
   if (!pipeline) return
   const checks = flattenChecks(pipeline.model)
   const byType = {}
   for (const c of checks) {
-    if (!byType[c.type]) byType[c.type] = { count: 0, latency: 0 }
+    if (!byType[c.type]) byType[c.type] = { count: 0, latency: 0, tokens_in: 0, tokens_out: 0 }
     byType[c.type].count += pipelineSteps
     byType[c.type].latency += c.latency_ms * pipelineSteps
+    byType[c.type].tokens_in += (c.tokens_in || 0) * pipelineSteps
+    byType[c.type].tokens_out += (c.tokens_out || 0) * pipelineSteps
   }
 
   const nChecks = checks.length * pipelineSteps
   const totalMs = checks.reduce((s, c) => s + c.latency_ms, 0) * pipelineSteps
+  const safetyTokensIn = checks.reduce((s, c) => s + (c.tokens_in || 0), 0) * pipelineSteps
+  const safetyTokensOut = checks.reduce((s, c) => s + (c.tokens_out || 0), 0) * pipelineSteps
+  const safetyTokensTotal = safetyTokensIn + safetyTokensOut
+  const prodTokensTotal = (PRODUCTIVE_TOKENS.input + PRODUCTIVE_TOKENS.output) * pipelineSteps
+  const tokenRatio = prodTokensTotal > 0 ? safetyTokensTotal / prodTokensTotal : 0
 
   let html = `<div class="stat-header">${pipeline.model.name}</div>`
   html += `<div class="stat-row"><span>Total checks</span><span class="stat-val">${nChecks}</span></div>`
-  html += `<div class="stat-row"><span>Safety overhead</span><span class="stat-val">${totalMs.toFixed(0)}ms</span></div>`
+  html += `<div class="stat-row"><span>Latency overhead</span><span class="stat-val">${totalMs.toFixed(0)}ms</span></div>`
   html += '<div class="stat-divider"></div>'
 
+  // Token section
+  html += '<div class="stat-section">Token Overhead</div>'
+  html += `<div class="stat-row"><span>Productive tokens</span><span class="stat-val">${fmtTokens(prodTokensTotal)}</span></div>`
+  html += `<div class="stat-row"><span>Safety tokens</span><span class="stat-val token-warn">${fmtTokens(safetyTokensTotal)}</span></div>`
+  html += `<div class="stat-row"><span>Safety / productive</span><span class="stat-val token-warn">${(tokenRatio * 100).toFixed(0)}%</span></div>`
+
+  // Token bar (productive vs safety)
+  const totalBar = prodTokensTotal + safetyTokensTotal
+  const prodPct = totalBar > 0 ? (prodTokensTotal / totalBar) * 100 : 100
+  const safePct = 100 - prodPct
+  html += `<div class="token-bar">
+    <div class="token-bar-prod" style="width:${prodPct.toFixed(1)}%" title="Productive: ${fmtTokens(prodTokensTotal)}"></div>
+    <div class="token-bar-safety" style="width:${safePct.toFixed(1)}%" title="Safety: ${fmtTokens(safetyTokensTotal)}"></div>
+  </div>`
+  html += `<div class="token-bar-labels">
+    <span>Productive</span><span>Safety</span>
+  </div>`
+
+  html += '<div class="stat-divider"></div>'
+
+  // Per-type breakdown
   for (const [type, info] of Object.entries(CHECKPOINT_TYPES)) {
     const d = byType[type]
     if (!d) continue
     const avgMs = (d.latency / d.count).toFixed(0)
+    const toks = d.tokens_in + d.tokens_out
     html += `<div class="stat-row">
       <span><span class="stat-dot" style="background:${info.color}"></span>${info.label}</span>
-      <span class="stat-val">${d.count} &times; ${avgMs}ms</span>
+      <span class="stat-val">${d.count} &times; ${avgMs}ms${toks > 0 ? ` (${fmtTokens(toks)} tok)` : ''}</span>
     </div>`
   }
-
-  html += '<div class="stat-divider"></div>'
-  // Cost at 1M runs/mo, $3/GPU-hr for LLM checks
-  const llmMs = Object.entries(byType)
-    .filter(([t]) => t === 'llm')
-    .reduce((s, [, d]) => s + d.latency, 0)
-  const costPerRun = llmMs / 1000 / 3600 * 3
-  html += `<div class="stat-row"><span>LLM guard cost @ 1M/mo</span><span class="stat-val">$${(costPerRun * 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></div>`
 
   statsPanel.innerHTML = html
 }

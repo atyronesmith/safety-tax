@@ -157,6 +157,39 @@
       margin-right: 5px;
       vertical-align: middle;
     }
+    .stat-section {
+      font-weight: 700;
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .stat-val.token-warn {
+      color: #f59e0b;
+    }
+    .token-bar {
+      display: flex;
+      height: 10px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 6px 0 2px;
+    }
+    .token-bar-prod {
+      background: #3b82f6;
+      height: 100%;
+    }
+    .token-bar-safety {
+      background: #ef4444;
+      height: 100%;
+    }
+    .token-bar-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: #64748b;
+      margin-bottom: 2px;
+    }
 
     /* Info section */
     .info {
@@ -249,9 +282,9 @@
         <p>Excluding S6 (Specialized Advice) and S8 (Intellectual Property) drops the false positive rate from 47.8% to 1.3%. A configuration fix, not a compute fix.</p>
       </div>
       <div class="info-card">
-        <h3>Production Multiplier</h3>
-        <div class="big-num amber">5-19x</div>
-        <p>Production security models require 15-290 guard checks vs. 3 measured empirically. Most overhead comes from LLM-based checks, not deterministic controls.</p>
+        <h3>Hidden Token Cost</h3>
+        <div class="big-num amber">2-4x</div>
+        <p>Each LLM guard re-ingests the productive output (~1,500 tokens) plus its own prompt. With 3-4 LLM guards per step, safety consumes 2-4x the productive token budget — invisible to the user.</p>
       </div>
     </div>
 
