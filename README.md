@@ -6,7 +6,7 @@ Watch an inference request flow through security checkpoints — from a minimal 
 
 ## What it shows
 
-Four reference security architectures, derived from drift empirical measurements:
+Six reference architectures — four security models plus a before/after agentic pipeline optimization:
 
 | Architecture | Checks/step | Overhead/step | Source |
 |-------------|-------------|---------------|--------|
@@ -14,6 +14,10 @@ Four reference security architectures, derived from drift empirical measurements
 | Meta LlamaFirewall | 4 | 734ms | arXiv:2505.03574 |
 | Microsoft Azure Foundry | 9 | 1,142ms | Azure AI Content Safety |
 | FINOS Regulated FSI | 22 | 1,039ms | FINOS AI Reference Architecture |
+| AAP Log Triage (Agentic) | 5 | 1,350ms | RH AI Quickstart |
+| AAP Log Triage (Drift) | 5 | 372ms | drift hybrid optimization |
+
+The AAP Log Triage models show agentic pipeline overhead: a 4-stage LangGraph pipeline where 3 of 4 LLM calls can be replaced with deterministic rules — 75% call reduction, 73% latency reduction, ~3,000 fewer tokens per cluster.
 
 Toggle between 1-step, 3-step, and 5-step (iterative) pipelines to see how overhead compounds.
 

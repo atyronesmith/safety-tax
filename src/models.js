@@ -23,6 +23,7 @@ export const PRODUCTIVE_TOKENS = { input: 1000, output: 1500 }
 
 export const CHECKPOINT_TYPES = {
   llm:             { color: '#ef4444', label: 'LLM Guard',       speed: 0.3 },
+  llm_agent:       { color: '#fb923c', label: 'LLM Agent Call',  speed: 0.3 },
   classifier:      { color: '#f59e0b', label: 'Classifier',      speed: 0.7 },
   static_analysis: { color: '#8b5cf6', label: 'Static Analysis', speed: 0.6 },
   deterministic:   { color: '#22c55e', label: 'Deterministic',    speed: 0.95 },
@@ -140,6 +141,52 @@ export const MODELS = [
         { name: 'Audit Log', type: 'deterministic', latency_ms: 2, tokens_in: 0, tokens_out: 0, desc: 'SOX/SR 11-7 trail' },
         { name: 'Decision Bind', type: 'crypto', latency_ms: 1, tokens_in: 0, tokens_out: 0, desc: 'Signed decision record' },
         { name: 'Anomaly Detect', type: 'classifier', latency_ms: 5, tokens_in: 0, tokens_out: 0, desc: 'Behavioral anomaly' },
+      ]},
+    ],
+  },
+  {
+    id: 'ansible_agentic',
+    name: 'AAP Log Triage (Agentic)',
+    description: '4-stage LangGraph pipeline — every stage is an LLM call',
+    source: 'RH AI Quickstart: ansible-log-analysis',
+    checkpoints: [
+      { phase: 'input',       checks: [
+        // Embedding + clustering: sentence-transformers on CPU, no LLM tokens
+        { name: 'Embed & Cluster', type: 'classifier', latency_ms: 200, tokens_in: 0, tokens_out: 0, desc: 'Sentence-transformers + FAISS clustering' },
+        // Summarize: ingests raw log (~1500 tokens) + system prompt (500), emits ~50
+        { name: 'LLM Summarize', type: 'llm_agent', latency_ms: 500, tokens_in: 2000, tokens_out: 50, desc: 'Structured summary: [Error Type]: [description]' },
+        // Classify: ingests summary (~50) + classification prompt (500), emits ~10
+        { name: 'LLM Classify', type: 'llm_agent', latency_ms: 300, tokens_in: 550, tokens_out: 10, desc: 'Assign to 1 of 7 expert roles' },
+        // Router: ingests summary (~50) + router prompt (300), emits ~20
+        { name: 'LLM Router', type: 'llm_agent', latency_ms: 200, tokens_in: 350, tokens_out: 20, desc: 'Decide if more context needed' },
+      ]},
+      { phase: 'llm',         checks: [] },
+      { phase: 'output',      checks: [
+        // Solution generation is the productive work — but still has overhead
+        // RAG context retrieval adds latency
+        { name: 'RAG Retrieval', type: 'classifier', latency_ms: 150, tokens_in: 0, tokens_out: 0, desc: 'FAISS cheat sheet lookup' },
+      ]},
+    ],
+  },
+  {
+    id: 'ansible_drift',
+    name: 'AAP Log Triage (Drift Hybrid)',
+    description: 'Rules replace 3 LLM calls — 75% call reduction',
+    source: 'drift hybrid optimization',
+    checkpoints: [
+      { phase: 'input',       checks: [
+        // Same embedding + clustering
+        { name: 'Embed & Cluster', type: 'classifier', latency_ms: 200, tokens_in: 0, tokens_out: 0, desc: 'Sentence-transformers + FAISS clustering' },
+        // denoise pre-digestion: strips successful tasks, retries, handlers
+        { name: 'Pre-digest', type: 'deterministic', latency_ms: 15, tokens_in: 0, tokens_out: 0, desc: 'denoise: strip noise, keep errors (~65% token savings)' },
+        // Regex summarize: pattern match common error types
+        { name: 'Rule Summarize', type: 'deterministic', latency_ms: 5, tokens_in: 0, tokens_out: 0, desc: 'Regex: SSH, AWS, K8s, package errors' },
+        // Keyword classify: match to expert role
+        { name: 'Rule Classify', type: 'deterministic', latency_ms: 2, tokens_in: 0, tokens_out: 0, desc: 'Keyword match to 7 categories' },
+      ]},
+      { phase: 'llm',         checks: [] },
+      { phase: 'output',      checks: [
+        { name: 'RAG Retrieval', type: 'classifier', latency_ms: 150, tokens_in: 0, tokens_out: 0, desc: 'FAISS cheat sheet lookup' },
       ]},
     ],
   },
