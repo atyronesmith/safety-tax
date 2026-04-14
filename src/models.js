@@ -171,18 +171,20 @@ export const MODELS = [
   {
     id: 'ansible_drift',
     name: 'AAP Log Triage (Drift Hybrid)',
-    description: 'Rules replace 3 LLM calls — 75% call reduction',
-    source: 'drift hybrid optimization',
+    description: 'Projected: rules replace classify + route, reduced-scope summarize',
+    source: 'drift hybrid optimization (projected — probe data pending)',
     checkpoints: [
       { phase: 'input',       checks: [
         // Same embedding + clustering
         { name: 'Embed & Cluster', type: 'classifier', latency_ms: 200, tokens_in: 0, tokens_out: 0, desc: 'Sentence-transformers + FAISS clustering' },
         // denoise pre-digestion: strips successful tasks, retries, handlers
-        { name: 'Pre-digest', type: 'deterministic', latency_ms: 15, tokens_in: 0, tokens_out: 0, desc: 'denoise: strip noise, keep errors (~65% token savings)' },
-        // Regex summarize: pattern match common error types
-        { name: 'Rule Summarize', type: 'deterministic', latency_ms: 5, tokens_in: 0, tokens_out: 0, desc: 'Regex: SSH, AWS, K8s, package errors' },
-        // Keyword classify: match to expert role
-        { name: 'Rule Classify', type: 'deterministic', latency_ms: 2, tokens_in: 0, tokens_out: 0, desc: 'Keyword match to 7 categories' },
+        { name: 'Pre-digest', type: 'deterministic', latency_ms: 15, tokens_in: 0, tokens_out: 0, desc: 'denoise: strip noise, keep errors (projected ~65% token savings)' },
+        // Hybrid summarize: regex extracts error type, LLM generates description on pre-digested input
+        { name: 'Hybrid Summarize', type: 'llm_agent', latency_ms: 250, tokens_in: 700, tokens_out: 30, desc: 'Regex error type + LLM description (reduced scope via pre-digestion)' },
+        // Keyword classify: match to expert role — prompt already documents keyword rules
+        { name: 'Rule Classify', type: 'deterministic', latency_ms: 2, tokens_in: 0, tokens_out: 0, desc: 'Keyword match to 7 categories (projected)' },
+        // Rule route: signal-presence heuristic
+        { name: 'Rule Route', type: 'deterministic', latency_ms: 1, tokens_in: 0, tokens_out: 0, desc: 'Signal completeness check (projected)' },
       ]},
       { phase: 'llm',         checks: [] },
       { phase: 'output',      checks: [

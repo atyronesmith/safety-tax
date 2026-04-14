@@ -15,9 +15,9 @@ Six reference architectures — four security models plus a before/after agentic
 | Microsoft Azure Foundry | 9 | 1,142ms | Azure AI Content Safety |
 | FINOS Regulated FSI | 22 | 1,039ms | FINOS AI Reference Architecture |
 | AAP Log Triage (Agentic) | 5 | 1,350ms | RH AI Quickstart |
-| AAP Log Triage (Drift) | 5 | 372ms | drift hybrid optimization |
+| AAP Log Triage (Drift) | 6 | 618ms | drift hybrid (projected) |
 
-The AAP Log Triage models show agentic pipeline overhead: a 4-stage LangGraph pipeline where 3 of 4 LLM calls can be replaced with deterministic rules — 75% call reduction, 73% latency reduction, ~3,000 fewer tokens per cluster.
+The AAP Log Triage models show agentic pipeline overhead: a 4-stage LangGraph pipeline where classify and route are replaceable with deterministic rules, and summarize scope is reducible via pre-digestion. Projected ~50% call reduction — probe data pending.
 
 Toggle between 1-step, 3-step, and 5-step (iterative) pipelines to see how overhead compounds.
 

@@ -302,12 +302,12 @@
       <div class="info-card">
         <h3>Agentic Pipeline Overhead</h3>
         <div class="big-num amber">4x</div>
-        <p>The AAP Log Triage pipeline makes 4 LLM calls per log cluster (summarize, classify, route, solve). Three of these are extractable via regex and keyword rules &mdash; a 75% call reduction with zero accuracy loss.</p>
+        <p>The AAP Log Triage pipeline makes 4 LLM calls per log cluster (summarize, classify, route, solve). Classification and routing are keyword/heuristic tasks; summarization is partially extractable. Probe data pending.</p>
       </div>
       <div class="info-card">
-        <h3>Drift Hybrid Optimization</h3>
-        <div class="big-num green">75%</div>
-        <p>Replacing LLM summarization, classification, and routing with deterministic rules eliminates 1,000ms latency and ~3,000 tokens per cluster. Pre-digestion strips a further 65% of input noise before the remaining LLM call.</p>
+        <h3>Drift Hybrid (Projected)</h3>
+        <div class="big-num green">50%</div>
+        <p>Projected: replace classify + route with rules, reduce summarize scope via pre-digestion. Cuts 2 full LLM calls and halves a third. Actual reduction depends on probe extractability &mdash; measurement planned.</p>
       </div>
     </div>
 
