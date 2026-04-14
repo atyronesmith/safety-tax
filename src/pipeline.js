@@ -9,11 +9,11 @@
 import { CHECKPOINT_TYPES, flattenChecks } from './models.js'
 
 // Animation-time scale: how fast gates process (higher = faster animation)
-const SPEED_SCALE = 0.15
+const SPEED_SCALE = 0.1125
 
 // Layout constants (fractions of canvas width/height)
-const LEFT_PAD = 0.06
-const RIGHT_PAD = 0.94
+const LEFT_PAD = 0.04
+const RIGHT_PAD = 0.96
 const LANE_Y = 0.50
 const GATE_W = 8
 const GATE_H = 40
@@ -159,4 +159,80 @@ export function tickPackets(pipeline, dt) {
   }
 
   return anyActive
+}
+
+/** Snap the first active packet to its current target gate (for pause). */
+export function snapToCurrentGate(pipeline) {
+  for (const p of pipeline.packets) {
+    if (p.state === 'done') continue
+
+    // Already waiting at a gate — just freeze the timer
+    if (p.state === 'waiting') {
+      p.waitFrames = 0
+      break
+    }
+
+    // Moving — snap to the next non-LLM gate
+    while (p.targetGateIdx < pipeline.gates.length && pipeline.gates[p.targetGateIdx].isLLM) {
+      p.targetGateIdx++
+    }
+
+    if (p.targetGateIdx < pipeline.gates.length) {
+      const gate = pipeline.gates[p.targetGateIdx]
+      p.x = gate.x
+      p.trail = [{ x: p.x, y: p.y }]
+      p.state = 'waiting'
+      p.waitFrames = 0
+      p.accLatency += gate.check.latency_ms
+      p.accTokensIn += gate.check.tokens_in || 0
+      p.accTokensOut += gate.check.tokens_out || 0
+      p.currentCheckName = gate.check.name
+    } else {
+      p.x = pipeline.gates[pipeline.gates.length - 1].x + 50
+      p.trail = [{ x: p.x, y: p.y }]
+      p.state = 'done'
+      pipeline.completedPackets++
+    }
+    break
+  }
+}
+
+/** Jump the first active packet to the next gate instantly. */
+export function stepToNextGate(pipeline) {
+  for (const p of pipeline.packets) {
+    if (p.state === 'done') continue
+
+    // If waiting, finish the wait and advance
+    if (p.state === 'waiting') {
+      p.waitFrames = 0
+      p.state = 'moving'
+      p.targetGateIdx++
+    }
+
+    // Skip LLM blocks
+    while (p.targetGateIdx < pipeline.gates.length && pipeline.gates[p.targetGateIdx].isLLM) {
+      p.targetGateIdx++
+    }
+
+    // Snap to the next gate
+    if (p.targetGateIdx < pipeline.gates.length) {
+      const gate = pipeline.gates[p.targetGateIdx]
+      p.x = gate.x
+      p.trail = [{ x: p.x, y: p.y }]
+      p.state = 'waiting'
+      p.waitFrames = 0
+      p.accLatency += gate.check.latency_ms
+      p.accTokensIn += gate.check.tokens_in || 0
+      p.accTokensOut += gate.check.tokens_out || 0
+      p.currentCheckName = gate.check.name
+    } else {
+      // Past all gates — done
+      p.x = pipeline.gates[pipeline.gates.length - 1].x + 50
+      p.trail = [{ x: p.x, y: p.y }]
+      p.state = 'done'
+      pipeline.completedPackets++
+    }
+
+    break  // only step the first active packet
+  }
 }

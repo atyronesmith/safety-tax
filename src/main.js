@@ -7,7 +7,7 @@
  */
 
 import { MODELS, flattenChecks, CHECKPOINT_TYPES, PRODUCTIVE_TOKENS } from './models.js'
-import { createPipeline, layoutGates, spawnPacket, tickPackets } from './pipeline.js'
+import { createPipeline, layoutGates, spawnPacket, tickPackets, snapToCurrentGate, stepToNextGate } from './pipeline.js'
 import {
   initRenderer, resize, getSize, clear,
   drawLane, drawStepLabels, drawGates, drawPacket,
@@ -23,6 +23,7 @@ let autoCycleTimer = null
 let pipelineSteps = 1
 let lastTime = 0
 let done = false
+let paused = false
 
 // --- DOM ---
 const canvas = document.getElementById('viz')
@@ -30,6 +31,8 @@ const modelBtns = document.getElementById('model-btns')
 const stepsSelect = document.getElementById('steps-toggle')
 const replayBtn = document.getElementById('replay-btn')
 const autoToggle = document.getElementById('auto-toggle')
+const pauseBtn = document.getElementById('pause-btn')
+const stepBtn = document.getElementById('step-btn')
 const statsPanel = document.getElementById('stats')
 
 // --- Init ---
@@ -44,10 +47,20 @@ stepsSelect.addEventListener('change', () => {
 
 replayBtn.addEventListener('click', () => startModel(currentModelIdx))
 
+pauseBtn.addEventListener('click', togglePause)
+
+stepBtn.addEventListener('click', stepForward)
+
 autoToggle.addEventListener('change', () => {
   autoCycle = autoToggle.checked
   if (autoCycle) scheduleNext()
   else clearTimeout(autoCycleTimer)
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
+  if (e.code === 'Space') { e.preventDefault(); togglePause() }
+  if (e.code === 'ArrowRight') { e.preventDefault(); stepForward() }
 })
 
 window.addEventListener('resize', () => {
@@ -89,91 +102,146 @@ function fmtTokens(n) {
 
 function updateStats() {
   if (!pipeline) return
-  const checks = flattenChecks(pipeline.model)
+
+  const p = pipeline.packets[0]
+  const passedIdx = p ? getPassedGateIndex(p) : -1
+
   const byType = {}
-  for (const c of checks) {
-    if (!byType[c.type]) byType[c.type] = { count: 0, latency: 0, tokens_in: 0, tokens_out: 0 }
-    byType[c.type].count += pipelineSteps
-    byType[c.type].latency += c.latency_ms * pipelineSteps
-    byType[c.type].tokens_in += (c.tokens_in || 0) * pipelineSteps
-    byType[c.type].tokens_out += (c.tokens_out || 0) * pipelineSteps
+  let nChecks = 0
+  let accLatency = 0
+  let accTokensIn = 0
+  let accTokensOut = 0
+
+  for (let i = 0; i <= passedIdx && i < pipeline.gates.length; i++) {
+    const gate = pipeline.gates[i]
+    if (gate.isLLM) continue
+    const c = gate.check
+    nChecks++
+    accLatency += c.latency_ms
+    accTokensIn += c.tokens_in || 0
+    accTokensOut += c.tokens_out || 0
+    const t = c.type
+    if (!byType[t]) byType[t] = { count: 0, tokens_in: 0, tokens_out: 0 }
+    byType[t].count++
+    byType[t].tokens_in += c.tokens_in || 0
+    byType[t].tokens_out += c.tokens_out || 0
   }
 
-  const nChecks = checks.length * pipelineSteps
-  const totalMs = checks.reduce((s, c) => s + c.latency_ms, 0) * pipelineSteps
-  const safetyTokensIn = checks.reduce((s, c) => s + (c.tokens_in || 0), 0) * pipelineSteps
-  const safetyTokensOut = checks.reduce((s, c) => s + (c.tokens_out || 0), 0) * pipelineSteps
-  const safetyTokensTotal = safetyTokensIn + safetyTokensOut
+  const allChecks = flattenChecks(pipeline.model)
+  const totalChecks = allChecks.length * pipelineSteps
+  const totalMs = allChecks.reduce((s, c) => s + c.latency_ms, 0) * pipelineSteps
+  const totalSafetyTokens = allChecks.reduce((s, c) => s + (c.tokens_in || 0) + (c.tokens_out || 0), 0) * pipelineSteps
+
+  const safetyTokensTotal = accTokensIn + accTokensOut
   const prodTokensTotal = (PRODUCTIVE_TOKENS.input + PRODUCTIVE_TOKENS.output) * pipelineSteps
   const tokenRatio = prodTokensTotal > 0 ? safetyTokensTotal / prodTokensTotal : 0
 
-  let html = `<div class="stat-header">${pipeline.model.name}</div>`
-  html += `<div class="stat-row"><span>Total checks</span><span class="stat-val">${nChecks}</span></div>`
-  html += `<div class="stat-row"><span>Latency overhead</span><span class="stat-val">${totalMs.toFixed(0)}ms</span></div>`
-  html += '<div class="stat-divider"></div>'
+  const currentCheck = (p && p.state === 'waiting' && passedIdx >= 0 && passedIdx < pipeline.gates.length)
+    ? pipeline.gates[passedIdx].check : null
 
-  // Token section
-  html += '<div class="stat-section">Token Overhead</div>'
-  html += `<div class="stat-row"><span>Productive tokens</span><span class="stat-val">${fmtTokens(prodTokensTotal)}</span></div>`
-  html += `<div class="stat-row"><span>Safety tokens</span><span class="stat-val token-warn">${fmtTokens(safetyTokensTotal)}</span></div>`
-  html += `<div class="stat-row"><span>Safety / productive</span><span class="stat-val token-warn">${(tokenRatio * 100).toFixed(0)}%</span></div>`
+  // All type rows — always present to prevent layout shifts
+  const allByType = {}
+  for (const c of allChecks) {
+    if (!allByType[c.type]) allByType[c.type] = 0
+    allByType[c.type] += pipelineSteps
+  }
 
-  // Token bar (productive vs safety)
+  // Current check — always show the row with fixed height, just vary content
+  let currentName = '\u2014'
+  let currentColor = '#64748b'
+  let currentMs = ''
+  let currentDesc = '\u00a0'
+  if (currentCheck && !done) {
+    const info = CHECKPOINT_TYPES[currentCheck.type]
+    currentName = currentCheck.name
+    currentColor = info ? info.color : '#e2e8f0'
+    currentMs = `${currentCheck.latency_ms}ms`
+    currentDesc = currentCheck.desc || '\u00a0'
+  }
+
   const totalBar = prodTokensTotal + safetyTokensTotal
   const prodPct = totalBar > 0 ? (prodTokensTotal / totalBar) * 100 : 100
   const safePct = 100 - prodPct
-  html += `<div class="token-bar">
-    <div class="token-bar-prod" style="width:${prodPct.toFixed(1)}%" title="Productive: ${fmtTokens(prodTokensTotal)}"></div>
-    <div class="token-bar-safety" style="width:${safePct.toFixed(1)}%" title="Safety: ${fmtTokens(safetyTokensTotal)}"></div>
-  </div>`
-  html += `<div class="token-bar-labels">
-    <span>Productive</span><span>Safety</span>
-  </div>`
 
-  html += '<div class="stat-divider"></div>'
-
-  // Per-type breakdown
+  let typeRows = ''
   for (const [type, info] of Object.entries(CHECKPOINT_TYPES)) {
-    const d = byType[type]
-    if (!d) continue
-    const avgMs = (d.latency / d.count).toFixed(0)
-    const toks = d.tokens_in + d.tokens_out
-    html += `<div class="stat-row">
+    if (!allByType[type]) continue
+    const cur = byType[type] || { count: 0, tokens_in: 0, tokens_out: 0 }
+    const curToks = cur.tokens_in + cur.tokens_out
+    typeRows += `<div class="stat-row">
       <span><span class="stat-dot" style="background:${info.color}"></span>${info.label}</span>
-      <span class="stat-val">${d.count} &times; ${avgMs}ms${toks > 0 ? ` (${fmtTokens(toks)} tok)` : ''}</span>
+      <span class="stat-val">${cur.count}/${allByType[type]}${curToks > 0 ? ` (${fmtTokens(curToks)} tok)` : ''}</span>
     </div>`
   }
 
-  statsPanel.innerHTML = html
+  statsPanel.innerHTML =
+    `<div class="stat-header">${pipeline.model.name}</div>` +
+    `<div class="stat-row" style="margin-bottom:6px">` +
+      `<span style="color:${currentColor}; font-weight:700">${currentName}</span>` +
+      `<span class="stat-val">${currentMs}</span>` +
+    `</div>` +
+    `<div style="font-size:10px; color:#64748b; margin-bottom:8px; min-height:15px">${currentDesc}</div>` +
+    `<div class="stat-divider"></div>` +
+    `<div class="stat-row"><span>Checks passed</span><span class="stat-val">${nChecks} / ${totalChecks}</span></div>` +
+    `<div class="stat-row"><span>Latency overhead</span><span class="stat-val">${accLatency.toFixed(0)} / ${totalMs.toFixed(0)}ms</span></div>` +
+    `<div class="stat-divider"></div>` +
+    `<div class="stat-section">Token Overhead</div>` +
+    `<div class="stat-row"><span>Productive tokens</span><span class="stat-val">${fmtTokens(prodTokensTotal)}</span></div>` +
+    `<div class="stat-row"><span>Safety tokens</span><span class="stat-val token-warn">${fmtTokens(safetyTokensTotal)} / ${fmtTokens(totalSafetyTokens)}</span></div>` +
+    `<div class="stat-row"><span>Safety / productive</span><span class="stat-val token-warn">${(tokenRatio * 100).toFixed(0)}%</span></div>` +
+    `<div class="token-bar">` +
+      `<div class="token-bar-prod" style="width:${prodPct.toFixed(1)}%"></div>` +
+      `<div class="token-bar-safety" style="width:${safePct.toFixed(1)}%"></div>` +
+    `</div>` +
+    `<div class="token-bar-labels"><span>Productive</span><span>Safety</span></div>` +
+    `<div class="stat-divider"></div>` +
+    typeRows
 }
 
-// --- Animation ---
-
-function startModel(idx) {
-  currentModelIdx = idx
-  highlightButton(idx)
-  done = false
-
-  if (animId) cancelAnimationFrame(animId)
-
-  const { w, h } = resize()
-  pipeline = createPipeline(MODELS[idx], pipelineSteps)
-  layoutGates(pipeline, w, h)
-  spawnPacket(pipeline, w, h)
-  updateStats()
-
-  lastTime = performance.now()
-  animId = requestAnimationFrame(tick)
+/** Get the index of the gate the packet is currently at or has most recently passed. */
+function getPassedGateIndex(p) {
+  if (p.state === 'done') return Infinity
+  if (p.state === 'waiting') return p.targetGateIdx
+  // Moving — hasn't reached targetGateIdx yet, so last passed is one before
+  return p.targetGateIdx - 1
 }
 
-function tick(now) {
-  const dtRaw = now - lastTime
-  lastTime = now
-  const dt = Math.min(dtRaw / 16, 3)
+// --- Pause / Step ---
 
-  const active = tickPackets(pipeline, dt)
+function togglePause() {
+  if (done) return
+  paused = !paused
+  pauseBtn.textContent = paused ? 'Play' : 'Pause'
+  if (paused) {
+    clearTimeout(autoCycleTimer)
+    if (animId) { cancelAnimationFrame(animId); animId = null }
+    // Snap packet to the nearest gate so it lands on a checkpoint
+    snapToCurrentGate(pipeline)
+    drawFrame()
+  } else {
+    lastTime = performance.now()
+    animId = requestAnimationFrame(tick)
+  }
+}
 
-  // --- Draw ---
+function stepForward() {
+  if (!pipeline || done) return
+  if (!paused) {
+    paused = true
+    pauseBtn.textContent = 'Play'
+  }
+  stepToNextGate(pipeline)
+  // Check if done
+  const p = pipeline.packets[0]
+  if (p && p.state === 'done') {
+    done = true
+    if (autoCycle) scheduleNext()
+  }
+  drawFrame()
+}
+
+function drawFrame() {
+  if (!pipeline) return
   clear()
   drawHeader(pipeline)
   drawLane(pipeline)
@@ -191,12 +259,47 @@ function tick(now) {
   }
 
   drawLegend()
+  if (done) drawDoneMessage(pipeline)
+  updateStats()
+}
+
+// --- Animation ---
+
+function startModel(idx) {
+  currentModelIdx = idx
+  highlightButton(idx)
+  done = false
+  paused = false
+  pauseBtn.textContent = 'Pause'
+
+  if (animId) cancelAnimationFrame(animId)
+
+  const { w, h } = resize()
+  pipeline = createPipeline(MODELS[idx], pipelineSteps)
+  layoutGates(pipeline, w, h)
+  spawnPacket(pipeline, w, h)
+  updateStats()
+
+  lastTime = performance.now()
+  animId = requestAnimationFrame(tick)
+}
+
+function tick(now) {
+  if (paused) return
+
+  const dtRaw = now - lastTime
+  lastTime = now
+  const dt = Math.min(dtRaw / 16, 3)
+
+  const active = tickPackets(pipeline, dt)
+
+  drawFrame()
 
   if (active) {
     animId = requestAnimationFrame(tick)
   } else if (!done) {
     done = true
-    drawDoneMessage(pipeline)
+    drawFrame()
     if (autoCycle) scheduleNext()
   }
 }

@@ -29,7 +29,7 @@ export function initRenderer(el) {
 export function resize() {
   const r = canvas.parentElement.getBoundingClientRect()
   const w = r.width
-  const h = 320
+  const h = 400
   const d = devicePixelRatio || 1
   canvas.width = w * d
   canvas.height = h * d
@@ -56,8 +56,8 @@ export function drawLane(pipeline) {
   ctx.lineWidth = 2
   ctx.setLineDash([6, 4])
   ctx.beginPath()
-  ctx.moveTo(w * 0.04, y)
-  ctx.lineTo(w * 0.96, y)
+  ctx.moveTo(w * 0.02, y)
+  ctx.lineTo(w * 0.98, y)
   ctx.stroke()
   ctx.setLineDash([])
 }
@@ -126,19 +126,19 @@ export function drawGates(pipeline, activeGateIdx) {
 
     // Name (rotated above)
     ctx.save()
-    ctx.translate(g.x, g.y - gh / 2 - 6)
-    ctx.rotate(-Math.PI / 4)
+    ctx.translate(g.x, g.y - gh / 2 - 8)
+    ctx.rotate(-Math.PI / 6)
     ctx.fillStyle = past ? C.dim : C.text
-    ctx.font = '9px "DM Sans", system-ui, sans-serif'
+    ctx.font = '12px "DM Sans", system-ui, sans-serif'
     ctx.textAlign = 'left'
     ctx.fillText(g.check.name, 0, 0)
     ctx.restore()
 
     // Latency below
     ctx.fillStyle = C.dim
-    ctx.font = '9px "JetBrains Mono", monospace'
+    ctx.font = '10px "JetBrains Mono", monospace'
     ctx.textAlign = 'center'
-    ctx.fillText(fmtMs(g.check.latency_ms), g.x, g.y + gh / 2 + 14)
+    ctx.fillText(fmtMs(g.check.latency_ms), g.x, g.y + gh / 2 + 16)
   }
 }
 
@@ -190,27 +190,29 @@ export function drawLatencyCounter(packet) {
 
   const totalTokens = packet.accTokensIn + packet.accTokensOut
 
-  // Latency + tokens
-  ctx.font = 'bold 13px "JetBrains Mono", monospace'
+  // All text below the lane (below per-gate latency labels)
   ctx.textAlign = 'center'
+  let yOff = packet.y + 58
 
+  // Accumulated latency
+  ctx.fillStyle = C.bright
+  ctx.font = 'bold 13px "JetBrains Mono", monospace'
+  ctx.fillText(`${packet.accLatency.toFixed(0)}ms`, packet.x, yOff)
+  yOff += 16
+
+  // Accumulated tokens
   if (totalTokens > 0) {
-    // Show both on two lines
-    ctx.fillStyle = C.bright
-    ctx.fillText(`${packet.accLatency.toFixed(0)}ms`, packet.x, packet.y - 30)
     ctx.fillStyle = '#f59e0b'
     ctx.font = 'bold 11px "JetBrains Mono", monospace'
-    ctx.fillText(`${fmtTokens(totalTokens)} tokens`, packet.x, packet.y - 16)
-  } else {
-    ctx.fillStyle = C.bright
-    ctx.fillText(`${packet.accLatency.toFixed(0)}ms`, packet.x, packet.y - 22)
+    ctx.fillText(`${fmtTokens(totalTokens)} tokens`, packet.x, yOff)
+    yOff += 16
   }
 
   // Current check name
   if (packet.state === 'waiting' && packet.currentCheckName) {
-    ctx.fillStyle = C.dim
-    ctx.font = '10px "DM Sans", system-ui, sans-serif'
-    ctx.fillText(packet.currentCheckName, packet.x, packet.y - (totalTokens > 0 ? 44 : 36))
+    ctx.fillStyle = C.glow
+    ctx.font = 'bold 11px "DM Sans", system-ui, sans-serif'
+    ctx.fillText(packet.currentCheckName, packet.x, yOff)
   }
 }
 
@@ -220,26 +222,26 @@ export function drawHeader(pipeline) {
   ctx.fillStyle = C.bright
   ctx.font = 'bold 18px "DM Sans", system-ui, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText(pipeline.model.name, w * 0.06, 30)
+  ctx.fillText(pipeline.model.name, w * 0.04, 30)
 
   ctx.fillStyle = C.dim
   ctx.font = '12px "DM Sans", system-ui, sans-serif'
-  ctx.fillText(pipeline.model.description, w * 0.06, 48)
+  ctx.fillText(pipeline.model.description, w * 0.04, 48)
 
   // Stats top-right
   ctx.textAlign = 'right'
   ctx.font = '12px "JetBrains Mono", monospace'
   ctx.fillStyle = C.dim
-  ctx.fillText(`${pipeline.totalChecks} checks  |  ${pipeline.totalLatency.toFixed(0)}ms  |  ${fmtTokens(pipeline.totalTokens)} tokens`, w * 0.94, 30)
+  ctx.fillText(`${pipeline.totalChecks} checks  |  ${pipeline.totalLatency.toFixed(0)}ms  |  ${fmtTokens(pipeline.totalTokens)} tokens`, w * 0.96, 30)
 
   if (pipeline.steps > 1) {
-    ctx.fillText(`${pipeline.steps}-step pipeline`, w * 0.94, 46)
+    ctx.fillText(`${pipeline.steps}-step pipeline`, w * 0.96, 46)
   }
 }
 
 export function drawLegend() {
   const { w, h } = getSize()
-  let x = w * 0.06
+  let x = w * 0.04
   const y = h - 14
 
   ctx.font = '10px "DM Sans", system-ui, sans-serif'
@@ -267,7 +269,7 @@ export function drawDoneMessage(pipeline) {
   if (!p) return
 
   const totalTokens = p.accTokensIn + p.accTokensOut
-  const y = h * 0.50 - 52
+  const y = h * 0.50 + 58
 
   ctx.font = 'bold 14px "JetBrains Mono", monospace'
   ctx.textAlign = 'center'
