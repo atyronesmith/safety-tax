@@ -286,10 +286,20 @@
         <div class="big-num amber">2-4x</div>
         <p>Each LLM guard re-ingests the productive output (~1,500 tokens) plus its own prompt. With 3-4 LLM guards per step, safety consumes 2-4x the productive token budget — invisible to the user.</p>
       </div>
+      <div class="info-card">
+        <h3>Guard Confidence</h3>
+        <div class="big-num">0.94</div>
+        <p>Mean entropy (bits) across 224 outputs — 94% of the theoretical maximum for a coin flip. 0% of outputs reached &ge;0.90 confidence. Every guard check is a coin-flip verdict at ~290ms of GPU inference.</p>
+      </div>
+      <div class="info-card">
+        <h3>CodeShield vs LLM Guard</h3>
+        <div class="big-num green">0 vs 114</div>
+        <p>CodeShield (static analysis) found 0 CWEs in 144 code outputs. Llama Guard flagged 114 of the same outputs — all false positives. Static analysis is deterministic, GPU-free, and finds real vulnerabilities.</p>
+      </div>
     </div>
 
     <footer>
-      Data from <a href="https://github.com/atyronesmith/drift">drift</a> empirical safety audit &mdash;
+      Data from drift empirical safety audit &mdash;
       224 unique LLM outputs, 30 experiments, 4 reference security architectures.
     </footer>
   </div>

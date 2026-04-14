@@ -6,7 +6,7 @@ Watch an inference request flow through security checkpoints — from a minimal 
 
 ## What it shows
 
-Four reference security architectures, derived from [drift](https://github.com/atyronesmith/drift) empirical measurements:
+Four reference security architectures, derived from drift empirical measurements:
 
 | Architecture | Checks/step | Overhead/step | Source |
 |-------------|-------------|---------------|--------|
@@ -23,6 +23,8 @@ Toggle between 1-step, 3-step, and 5-step (iterative) pipelines to see how overh
 - **96.4% compound pipeline rejection** — 3-step pipeline, at least one step blocked
 - **1.3% after category override** — disabling S6/S8 is a configuration fix, not compute
 - **5-19x production multiplier** — real architectures require 15-290 checks vs. 3 measured
+- **Guard confidence is a coin flip** — 0% of outputs at >=0.90 confidence, mean entropy 0.94 bits
+- **CodeShield vs Llama Guard** — static analysis found 0 CWEs in 144 code outputs; all 114 guard flags confirmed false positives
 
 ## Run
 
@@ -36,9 +38,8 @@ No build step, no dependencies. Just static HTML/CSS/JS with ES6 modules.
 
 ## Data sources
 
-- Security model definitions from [`drift/security_models/`](https://github.com/atyronesmith/drift/tree/main/security_models)
+- Security model definitions derived from drift's `security_models/` YAML files
 - Latency data from vendor benchmarks and drift empirical measurements
-- See [docs/ai-safety-overhead.md](https://github.com/atyronesmith/drift/blob/main/docs/ai-safety-overhead.md) for full analysis
 
 ## License
 
