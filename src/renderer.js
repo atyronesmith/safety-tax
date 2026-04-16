@@ -18,18 +18,19 @@ const C = {
 }
 
 let canvas, ctx
+let canvasH = 400
 
 export function initRenderer(el) {
   canvas = el
   ctx = canvas.getContext('2d')
   resize()
-  window.addEventListener('resize', resize)
 }
 
-export function resize() {
+export function resize(requestedHeight) {
+  if (requestedHeight) canvasH = requestedHeight
   const r = canvas.parentElement.getBoundingClientRect()
   const w = r.width
-  const h = 400
+  const h = canvasH
   const d = devicePixelRatio || 1
   canvas.width = w * d
   canvas.height = h * d
@@ -50,44 +51,78 @@ export function clear() {
 }
 
 export function drawLane(pipeline) {
-  const { w, h } = getSize()
-  const y = h * 0.50
+  const { w } = getSize()
+
+  // Collect unique row Y values from gates
+  const rowYs = []
+  const seen = new Set()
+  for (const g of pipeline.gates) {
+    if (!seen.has(g.y)) { seen.add(g.y); rowYs.push(g.y) }
+  }
+  rowYs.sort((a, b) => a - b)
+
+  // Draw lane line per row
   ctx.strokeStyle = C.laneStroke
   ctx.lineWidth = 2
   ctx.setLineDash([6, 4])
-  ctx.beginPath()
-  ctx.moveTo(w * 0.02, y)
-  ctx.lineTo(w * 0.98, y)
-  ctx.stroke()
+  for (const y of rowYs) {
+    ctx.beginPath()
+    ctx.moveTo(w * 0.02, y)
+    ctx.lineTo(w * 0.98, y)
+    ctx.stroke()
+  }
   ctx.setLineDash([])
+
+  // Draw wrap connectors between rows (right-side U-turn)
+  if (rowYs.length > 1) {
+    for (let i = 0; i < rowYs.length - 1; i++) {
+      const rowGates = pipeline.gates.filter(g => g.y === rowYs[i])
+      const nextGates = pipeline.gates.filter(g => g.y === rowYs[i + 1])
+      const endX = Math.max(...rowGates.map(g => g.x)) + 16
+      const startX = Math.min(...nextGates.map(g => g.x)) - 16
+      const y1 = rowYs[i]
+      const y2 = rowYs[i + 1]
+      const turnX = w * 0.985
+
+      // Dashed path: right from last gate → down on right edge → left to first gate of next row
+      ctx.strokeStyle = C.sep + '50'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([4, 4])
+      ctx.beginPath()
+      ctx.moveTo(endX, y1)
+      ctx.lineTo(turnX - 6, y1)
+      ctx.arcTo(turnX, y1, turnX, y1 + 6, 6)
+      ctx.lineTo(turnX, y2 - 6)
+      ctx.arcTo(turnX, y2, turnX - 6, y2, 6)
+      ctx.lineTo(startX, y2)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // Small arrow at start of next row
+      ctx.fillStyle = C.sep + '70'
+      ctx.beginPath()
+      ctx.moveTo(startX + 1, y2 - 4)
+      ctx.lineTo(startX - 5, y2)
+      ctx.lineTo(startX + 1, y2 + 4)
+      ctx.fill()
+    }
+  }
 }
 
 export function drawStepLabels(pipeline) {
-  const { w, h } = getSize()
   if (!pipeline.gates.length || pipeline.steps <= 1) return
-
-  ctx.font = '11px "DM Sans", system-ui, sans-serif'
-  ctx.textAlign = 'center'
 
   for (let s = 0; s < pipeline.steps; s++) {
     const stepGates = pipeline.gates.filter(g => g.step === s)
     if (!stepGates.length) continue
-    const minX = Math.min(...stepGates.map(g => g.x))
-    const maxX = Math.max(...stepGates.map(g => g.x))
-    const cx = (minX + maxX) / 2
+    const firstX = Math.min(...stepGates.map(g => g.x))
+    const rowY = stepGates[0].y
 
+    // Small step label in the left margin
     ctx.fillStyle = C.dim
-    ctx.fillText(`Step ${s + 1}`, cx, h * 0.16)
-
-    // Bracket
-    ctx.strokeStyle = C.sep
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(minX - 8, h * 0.19)
-    ctx.lineTo(minX - 8, h * 0.22)
-    ctx.lineTo(maxX + 8, h * 0.22)
-    ctx.lineTo(maxX + 8, h * 0.19)
-    ctx.stroke()
+    ctx.font = 'bold 10px "JetBrains Mono", monospace'
+    ctx.textAlign = 'right'
+    ctx.fillText(`Step ${s + 1}`, firstX - 14, rowY + 4)
   }
 }
 
@@ -269,19 +304,22 @@ export function drawDoneMessage(pipeline) {
   if (!p) return
 
   const totalTokens = p.accTokensIn + p.accTokensOut
-  const y = h * 0.50 + 58
+
+  // Position below the last row
+  const lastGateY = pipeline.gates.length
+    ? pipeline.gates[pipeline.gates.length - 1].y
+    : h * 0.50
+  const y = pipeline.steps <= 1 ? lastGateY + 58 : lastGateY + 52
 
   ctx.font = 'bold 14px "JetBrains Mono", monospace'
   ctx.textAlign = 'center'
 
-  // Latency line
   ctx.fillStyle = C.glow
   ctx.fillText(
     `Safety overhead: ${p.accLatency.toFixed(0)}ms latency  \u00b7  ${pipeline.totalChecks} checks`,
     w / 2, y
   )
 
-  // Token line
   if (totalTokens > 0) {
     ctx.fillStyle = '#f59e0b'
     ctx.font = 'bold 13px "JetBrains Mono", monospace'

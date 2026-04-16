@@ -13,7 +13,7 @@ Six reference architectures — four security models plus a before/after agentic
 | Drift Baseline | 1 | 290ms | Empirical measurement |
 | Meta LlamaFirewall | 4 | 734ms | arXiv:2505.03574 |
 | Microsoft Azure Foundry | 9 | 1,142ms | Azure AI Content Safety |
-| FINOS Regulated FSI | 22 | 1,039ms | FINOS AI Reference Architecture |
+| FINOS Regulated FSI | 26 | 1,060ms | FINOS AI Reference Architecture (Apr 2026) |
 | AAP Log Triage (Agentic) | 5 | 1,350ms | RH AI Quickstart |
 | AAP Log Triage (Drift) | 6 | 618ms | drift hybrid (projected) |
 
@@ -26,7 +26,7 @@ Toggle between 1-step, 3-step, and 5-step (iterative) pipelines to see how overh
 - **47.8% false positive rate** — Llama Guard 3-1B flagged 107/224 legitimate SE outputs as unsafe
 - **96.4% compound pipeline rejection** — 3-step pipeline, at least one step blocked
 - **1.3% after category override** — disabling S6/S8 is a configuration fix, not compute
-- **5-19x production multiplier** — real architectures require 15-290 checks vs. 3 measured
+- **5-24x production multiplier** — real architectures require 15-365 checks vs. 3 measured
 - **Guard confidence is a coin flip** — 0% of outputs at >=0.90 confidence, mean entropy 0.94 bits
 - **CodeShield vs Llama Guard** — static analysis found 0 CWEs in 144 code outputs; all 114 guard flags confirmed false positives
 

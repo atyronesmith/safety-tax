@@ -7,7 +7,7 @@
  */
 
 import { MODELS, flattenChecks, CHECKPOINT_TYPES, PRODUCTIVE_TOKENS } from './models.js'
-import { createPipeline, layoutGates, spawnPacket, tickPackets, snapToCurrentGate, stepToNextGate } from './pipeline.js'
+import { createPipeline, layoutGates, spawnPacket, tickPackets, snapToCurrentGate, stepToNextGate, computeCanvasHeight } from './pipeline.js'
 import {
   initRenderer, resize, getSize, clear,
   drawLane, drawStepLabels, drawGates, drawPacket,
@@ -65,10 +65,14 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('resize', () => {
   if (pipeline) {
-    const { w, h } = resize()
+    const canvasH = computeCanvasHeight(pipelineSteps)
+    const { w, h } = resize(canvasH)
     layoutGates(pipeline, w, h)
-    // Reposition packets to lane Y
-    for (const p of pipeline.packets) p.y = h * 0.50
+    // Reposition packets to their current gate's row Y
+    for (const p of pipeline.packets) {
+      const idx = Math.min(p.targetGateIdx, pipeline.gates.length - 1)
+      if (idx >= 0) p.y = pipeline.gates[idx].y
+    }
   }
 })
 
@@ -274,7 +278,8 @@ function startModel(idx) {
 
   if (animId) cancelAnimationFrame(animId)
 
-  const { w, h } = resize()
+  const canvasH = computeCanvasHeight(pipelineSteps)
+  const { w, h } = resize(canvasH)
   pipeline = createPipeline(MODELS[idx], pipelineSteps)
   layoutGates(pipeline, w, h)
   spawnPacket(pipeline, w, h)

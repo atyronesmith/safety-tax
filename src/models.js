@@ -102,8 +102,8 @@ export const MODELS = [
   {
     id: 'finos_regulated',
     name: 'FINOS Regulated FSI',
-    description: '36 controls, 9 layers, SOX/SR 11-7 compliance',
-    source: 'FINOS AI Reference Architecture',
+    description: '36 controls, 11 layers, 43 threats, SOX/SR 11-7 compliance',
+    source: 'FINOS AI Reference Architecture (Apr 2026 threat model)',
     checkpoints: [
       { phase: 'input',       checks: [
         { name: 'Sanitization', type: 'deterministic', latency_ms: 5, tokens_in: 0, tokens_out: 0, desc: 'Input validation' },
@@ -136,6 +136,15 @@ export const MODELS = [
         { name: 'Agent Card', type: 'crypto', latency_ms: 1, tokens_in: 0, tokens_out: 0, desc: 'Crypto agent card' },
         { name: 'Identity', type: 'crypto', latency_ms: 1, tokens_in: 0, tokens_out: 0, desc: 'SPIFFE/mTLS' },
         { name: 'Collusion Detect', type: 'classifier', latency_ms: 5, tokens_in: 0, tokens_out: 0, desc: 'Anomaly detection' },
+      ]},
+      { phase: 'memory',      checks: [
+        { name: 'Context Guard', type: 'classifier', latency_ms: 10, tokens_in: 0, tokens_out: 0, desc: 'Context window injection scan' },
+        { name: 'Memory Isolation', type: 'deterministic', latency_ms: 1, tokens_in: 0, tokens_out: 0, desc: 'Cross-session isolation (C34)' },
+        { name: 'Knowledge Valid.', type: 'deterministic', latency_ms: 5, tokens_in: 0, tokens_out: 0, desc: 'Source provenance (C18)' },
+      ]},
+      { phase: 'evaluation',  checks: [
+        { name: 'Feedback Valid.', type: 'classifier', latency_ms: 5, tokens_in: 0, tokens_out: 0, desc: 'Multi-source trust scoring (C27)' },
+        { name: 'Resource Quota', type: 'deterministic', latency_ms: 0.1, tokens_in: 0, tokens_out: 0, desc: 'Per-request quota (C22)' },
       ]},
       { phase: 'audit',       checks: [
         { name: 'Audit Log', type: 'deterministic', latency_ms: 2, tokens_in: 0, tokens_out: 0, desc: 'SOX/SR 11-7 trail' },

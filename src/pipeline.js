@@ -11,12 +11,29 @@ import { CHECKPOINT_TYPES, flattenChecks } from './models.js'
 // Animation-time scale: how fast gates process (higher = faster animation)
 const SPEED_SCALE = 0.1125
 
-// Layout constants (fractions of canvas width/height)
+// Layout constants
 const LEFT_PAD = 0.04
 const RIGHT_PAD = 0.96
 const LANE_Y = 0.50
 const GATE_W = 8
 const GATE_H = 40
+
+// Multi-row layout
+const HEADER_H = 70
+const ROW_HEIGHT = 130
+const FOOTER_H = 40
+
+/** Compute required canvas height for a given number of pipeline steps. */
+export function computeCanvasHeight(steps) {
+  if (steps <= 1) return 400
+  return HEADER_H + steps * ROW_HEIGHT + FOOTER_H
+}
+
+function rowCenterY(row, steps, h) {
+  if (steps <= 1) return LANE_Y * h
+  const bandH = (h - HEADER_H - FOOTER_H) / steps
+  return HEADER_H + bandH * row + bandH / 2
+}
 
 /** Pipeline state for one security model. */
 export function createPipeline(model, steps) {
@@ -34,26 +51,25 @@ export function createPipeline(model, steps) {
   }
 }
 
-/** Compute gate positions across the full pipeline (all steps). */
+/** Compute gate positions across the full pipeline (all steps).
+ *  For multi-step pipelines, each step gets its own row. */
 export function layoutGates(pipeline, w, h) {
   const { checksPerStep, steps } = pipeline
   const gates = []
 
-  // Separate checks into input-side and output-side per step
   const inputChecks = checksPerStep.filter(c => c.phase === 'input')
   const outputChecks = checksPerStep.filter(c => c.phase !== 'input')
 
-  // Total slots: per step = inputChecks + 1 LLM block + outputChecks
+  // Per-row slot count (same for every step)
   const slotsPerStep = inputChecks.length + 1 + outputChecks.length
-  const totalSlots = slotsPerStep * steps
   const usableW = (RIGHT_PAD - LEFT_PAD) * w
-  const spacing = usableW / (totalSlots + 1)
+  const spacing = usableW / (slotsPerStep + 1)
   const startX = LEFT_PAD * w
-  const y = LANE_Y * h
 
-  let slotIdx = 0
   for (let s = 0; s < steps; s++) {
-    // Input checks
+    const y = rowCenterY(s, steps, h)
+    let slotIdx = 0
+
     for (const c of inputChecks) {
       slotIdx++
       gates.push({
@@ -62,7 +78,7 @@ export function layoutGates(pipeline, w, h) {
         width: GATE_W, height: GATE_H,
       })
     }
-    // LLM block
+
     slotIdx++
     gates.push({
       x: startX + slotIdx * spacing,
@@ -71,7 +87,7 @@ export function layoutGates(pipeline, w, h) {
       step: s, isLLM: true,
       width: GATE_W * 2.5, height: GATE_H * 1.3,
     })
-    // Output checks
+
     for (const c of outputChecks) {
       slotIdx++
       gates.push({
@@ -86,11 +102,12 @@ export function layoutGates(pipeline, w, h) {
   return gates
 }
 
-/** Spawn a new packet at the left edge. */
+/** Spawn a new packet at the left edge of the first row. */
 export function spawnPacket(pipeline, w, h) {
+  const y0 = pipeline.gates.length ? pipeline.gates[0].y : rowCenterY(0, pipeline.steps, h)
   pipeline.packets.push({
     x: LEFT_PAD * w - 20,
-    y: LANE_Y * h,
+    y: y0,
     targetGateIdx: 0,
     waitFrames: 0,
     state: 'moving',    // moving, waiting, done
@@ -135,12 +152,18 @@ export function tickPackets(pipeline, dt) {
 
     const gate = pipeline.gates[p.targetGateIdx]
     const dx = gate.x - p.x
+    const dy = gate.y - p.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
 
-    if (Math.abs(dx) < p.speed * dt + 1) {
+    // Speed up inter-row transitions so they don't feel sluggish
+    const interRow = Math.abs(dy) > 5
+    const spd = interRow ? p.speed * 4 : p.speed
+
+    if (dist < spd * dt + 1) {
       // Arrived at gate
       p.x = gate.x
+      p.y = gate.y
       if (gate.isLLM) {
-        // Productive LLM — no wait, just pass through
         p.targetGateIdx++
       } else {
         p.state = 'waiting'
@@ -151,7 +174,8 @@ export function tickPackets(pipeline, dt) {
         p.currentCheckName = gate.check.name
       }
     } else {
-      p.x += Math.sign(dx) * p.speed * dt
+      p.x += (dx / dist) * spd * dt
+      p.y += (dy / dist) * spd * dt
     }
 
     p.trail.push({ x: p.x, y: p.y })
@@ -166,13 +190,11 @@ export function snapToCurrentGate(pipeline) {
   for (const p of pipeline.packets) {
     if (p.state === 'done') continue
 
-    // Already waiting at a gate — just freeze the timer
     if (p.state === 'waiting') {
       p.waitFrames = 0
       break
     }
 
-    // Moving — snap to the next non-LLM gate
     while (p.targetGateIdx < pipeline.gates.length && pipeline.gates[p.targetGateIdx].isLLM) {
       p.targetGateIdx++
     }
@@ -180,6 +202,7 @@ export function snapToCurrentGate(pipeline) {
     if (p.targetGateIdx < pipeline.gates.length) {
       const gate = pipeline.gates[p.targetGateIdx]
       p.x = gate.x
+      p.y = gate.y
       p.trail = [{ x: p.x, y: p.y }]
       p.state = 'waiting'
       p.waitFrames = 0
@@ -188,7 +211,9 @@ export function snapToCurrentGate(pipeline) {
       p.accTokensOut += gate.check.tokens_out || 0
       p.currentCheckName = gate.check.name
     } else {
-      p.x = pipeline.gates[pipeline.gates.length - 1].x + 50
+      const last = pipeline.gates[pipeline.gates.length - 1]
+      p.x = last.x + 50
+      p.y = last.y
       p.trail = [{ x: p.x, y: p.y }]
       p.state = 'done'
       pipeline.completedPackets++
@@ -202,22 +227,20 @@ export function stepToNextGate(pipeline) {
   for (const p of pipeline.packets) {
     if (p.state === 'done') continue
 
-    // If waiting, finish the wait and advance
     if (p.state === 'waiting') {
       p.waitFrames = 0
       p.state = 'moving'
       p.targetGateIdx++
     }
 
-    // Skip LLM blocks
     while (p.targetGateIdx < pipeline.gates.length && pipeline.gates[p.targetGateIdx].isLLM) {
       p.targetGateIdx++
     }
 
-    // Snap to the next gate
     if (p.targetGateIdx < pipeline.gates.length) {
       const gate = pipeline.gates[p.targetGateIdx]
       p.x = gate.x
+      p.y = gate.y
       p.trail = [{ x: p.x, y: p.y }]
       p.state = 'waiting'
       p.waitFrames = 0
@@ -226,13 +249,14 @@ export function stepToNextGate(pipeline) {
       p.accTokensOut += gate.check.tokens_out || 0
       p.currentCheckName = gate.check.name
     } else {
-      // Past all gates — done
-      p.x = pipeline.gates[pipeline.gates.length - 1].x + 50
+      const last = pipeline.gates[pipeline.gates.length - 1]
+      p.x = last.x + 50
+      p.y = last.y
       p.trail = [{ x: p.x, y: p.y }]
       p.state = 'done'
       pipeline.completedPackets++
     }
 
-    break  // only step the first active packet
+    break
   }
 }
