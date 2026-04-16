@@ -6,7 +6,7 @@ Watch an inference request flow through security checkpoints — from a minimal 
 
 ## What it shows
 
-Six reference architectures — four security models plus a before/after agentic pipeline optimization:
+Four security reference architectures:
 
 | Architecture | Checks/step | Overhead/step | Source |
 |-------------|-------------|---------------|--------|
@@ -14,10 +14,6 @@ Six reference architectures — four security models plus a before/after agentic
 | Meta LlamaFirewall | 4 | 734ms | arXiv:2505.03574 |
 | Microsoft Azure Foundry | 9 | 1,142ms | Azure AI Content Safety |
 | FINOS Regulated FSI | 26 | 1,060ms | FINOS AI Reference Architecture (Apr 2026) |
-| AAP Log Triage (Agentic) | 5 | 1,350ms | RH AI Quickstart |
-| AAP Log Triage (Drift) | 6 | 618ms | drift hybrid (projected) |
-
-The AAP Log Triage models show agentic pipeline overhead: a 4-stage LangGraph pipeline where classify and route are replaceable with deterministic rules, and summarize scope is reducible via pre-digestion. Projected ~50% call reduction — probe data pending.
 
 Toggle between 1-step, 3-step, and 5-step (iterative) pipelines to see how overhead compounds.
 
