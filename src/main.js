@@ -34,11 +34,13 @@ const autoToggle = document.getElementById('auto-toggle')
 const pauseBtn = document.getElementById('pause-btn')
 const stepBtn = document.getElementById('step-btn')
 const statsPanel = document.getElementById('stats')
+const tooltip = document.getElementById('gate-tooltip')
 
 // --- Init ---
 initRenderer(canvas)
 buildModelButtons()
 startModel(0)
+initTooltip()
 
 stepsSelect.addEventListener('change', () => {
   pipelineSteps = +stepsSelect.value
@@ -314,4 +316,48 @@ function scheduleNext() {
   autoCycleTimer = setTimeout(() => {
     startModel((currentModelIdx + 1) % MODELS.length)
   }, 3500)
+}
+
+// --- Tooltip ---
+
+function initTooltip() {
+  canvas.addEventListener('mousemove', (e) => {
+    if (!pipeline) return
+    const rect = canvas.getBoundingClientRect()
+    const mx = e.clientX - rect.left
+    const my = e.clientY - rect.top
+
+    let hit = null
+    for (const g of pipeline.gates) {
+      if (g.isLLM) continue
+      const hw = (g.width + 12) / 2
+      const hh = (g.height + 12) / 2
+      if (mx >= g.x - hw && mx <= g.x + hw && my >= g.y - hh && my <= g.y + hh) {
+        hit = g
+        break
+      }
+    }
+
+    if (hit) {
+      const info = CHECKPOINT_TYPES[hit.check.type]
+      tooltip.innerHTML =
+        `<div class="tt-name" style="color:${info ? info.color : '#e2e8f0'}">${hit.check.name}</div>` +
+        `<div class="tt-desc">${hit.check.desc}</div>` +
+        `<div class="tt-meta">${hit.check.latency_ms}ms · ${info ? info.label : hit.check.type}</div>`
+      tooltip.style.display = 'block'
+      // Position above the gate, clamped to canvas bounds
+      let tx = mx - tooltip.offsetWidth / 2
+      let ty = my - tooltip.offsetHeight - 12
+      tx = Math.max(0, Math.min(tx, rect.width - tooltip.offsetWidth))
+      if (ty < 0) ty = my + 20
+      tooltip.style.left = tx + 'px'
+      tooltip.style.top = ty + 'px'
+    } else {
+      tooltip.style.display = 'none'
+    }
+  })
+
+  canvas.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none'
+  })
 }
